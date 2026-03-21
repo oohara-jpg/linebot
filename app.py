@@ -44,4 +44,41 @@ def analyze(img_b64):
 def gcal(ev):
     from urllib.parse import quote
     f = lambda d: d.replace('-', '')
+    return f"https://calendar.google.com/calendar/render?action=TEMPLATE&text={quote(ev['title'])}&dates={f(ev['date'])}/{f(ev['endDate'])}&details={quote(ev.get('details',''))}"
+
+def process_image(message_id, reply_token):
+    try:
+        img_b64 = get_image(message_id)
+        result = analyze(img_b64)
+        msgs = []
+        for ev in result.get('events', []):
+            msgs.append(f"{ev['title']}\n{ev['date']}\n{gcal(ev)}")
+        reply = '\n\n'.join(msgs) if msgs else '行事が見つかりませんでした'
+    except Exception as e:
+        reply = f'読み取りに失敗しました。もう一度試してください。'
     
+    with ApiClient(configuration) as api_client:
+        MessagingApi(api_client).reply_message(ReplyMessageRequest(
+            reply_token=reply_token,
+            messages=[TextMessage(text=reply[:5000])]))
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+    return 'OK'
+
+@handler.add(MessageEvent, message=ImageMessageContent)
+def handle_image(event):
+    thread = threading.Thread(
+        target=process_image,
+        args=(event.message.id, event.reply_token))
+    thread.start()
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
