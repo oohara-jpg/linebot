@@ -51,7 +51,8 @@ def process_image(message_id, reply_token):
         img_b64 = get_image(message_id)
         result = analyze(img_b64)
         msgs = []
-        for ev in result.get('events', []):
+        events = result if isinstance(result, list) else result.get('events', [])
+        for ev in events:
             msgs.append(f"{ev['title']}\n{ev['date']}\n{gcal(ev)}")
         reply = '\n\n'.join(msgs) if msgs else '行事が見つかりませんでした'
     except Exception as e:
