@@ -55,7 +55,7 @@ def process_image(message_id, reply_token):
             msgs.append(f"{ev['title']}\n{ev['date']}\n{gcal(ev)}")
         reply = '\n\n'.join(msgs) if msgs else '行事が見つかりませんでした'
     except Exception as e:
-        reply = f'読み取りに失敗しました。もう一度試してください。'
+       reply = f'エラー: {str(e)}'
     
     with ApiClient(configuration) as api_client:
         MessagingApi(api_client).reply_message(ReplyMessageRequest(
