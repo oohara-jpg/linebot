@@ -64,7 +64,9 @@ def process_image(message_id, reply_token, child_info):
         msgs = []
         events = result if isinstance(result, list) else result.get('events', [])
         for ev in events:
-            msgs.append(f"{child_info['name']} - {ev['title']}\n{ev.get('date','')}\n{gcal(ev, child_info['name'])}")
+           url = gcal(ev, child_info['name'])
+            short_url = requests.get(f"https://tinyurl.com/api-create.php?url={url}").text
+            msgs.append(f"{child_info['name']} - {ev['title']}\n{ev.get('date','')}\n{short_url}")
         reply = '\n\n'.join(msgs) if msgs else '行事が見つかりませんでした'
     except Exception as e:
         reply = f'エラー: {str(e)}'
