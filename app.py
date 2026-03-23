@@ -39,12 +39,16 @@ def analyze(img_b64):
                   {'type': 'text', 'text': prompt}]}]},
         timeout=30)
     text = res.json()['choices'][0]['message']['content']
+    if not text:
+        return {'events': []}
     return json.loads(text.replace('```json', '').replace('```', '').strip())
 
 def gcal(ev):
     from urllib.parse import quote
     f = lambda d: d.replace('-', '')
-    return f"https://calendar.google.com/calendar/render?action=TEMPLATE&text={quote(ev['title'])}&dates={f(ev['date'])}/{f(ev['endDate'])}&details={quote(ev.get('details',''))}"
+    date = ev.get('date', '20260101')
+    end_date = ev.get('endDate', date)
+    return f"https://calendar.google.com/calendar/render?action=TEMPLATE&text={quote(ev['title'])}&dates={f(date)}/{f(end_date)}&details={quote(ev.get('details',''))}"
 
 def process_image(message_id, reply_token):
     try:
@@ -53,10 +57,10 @@ def process_image(message_id, reply_token):
         msgs = []
         events = result if isinstance(result, list) else result.get('events', [])
         for ev in events:
-            msgs.append(f"{ev['title']}\n{ev['date']}\n{gcal(ev)}")
+            msgs.append(f"{ev['title']}\n{ev.get('date','')}\n{gcal(ev)}")
         reply = '\n\n'.join(msgs) if msgs else '行事が見つかりませんでした'
     except Exception as e:
-       reply = f'エラー: {str(e)}'
+        reply = f'エラー: {str(e)}'
     
     with ApiClient(configuration) as api_client:
         MessagingApi(api_client).reply_message(ReplyMessageRequest(
