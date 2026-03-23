@@ -25,8 +25,6 @@ CHILDREN = {
     'soka': {'name': '颯華', 'school': '敬愛保育園'},
 }
 
-pending_images = {}
-
 def get_image(message_id):
     url = f"https://api-data.line.me/v2/bot/message/{message_id}/content"
     headers = {"Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}"}
@@ -51,20 +49,22 @@ def analyze(img_b64, child_info):
         return {'events': []}
     return json.loads(text.replace('```json', '').replace('```', '').strip())
 
-def gcal(ev):
+def gcal(ev, child_name):
     from urllib.parse import quote
     f = lambda d: d.replace('-', '')
     date = ev.get('date', '20260101')
     end_date = ev.get('endDate', date)
-    return f"https://calendar.google.com/calendar/render?action=TEMPLATE&text={quote(ev['title'])}&dates={f(date)}/{f(end_date)}&details={quote(ev.get('details',''))}"
+    title = f"{child_name} - {ev['title']}"
+    return f"https://calendar.google.com/calendar/render?action=TEMPLATE&text={quote(title)}&dates={f(date)}/{f(end_date)}&details={quote(ev.get('details',''))}"
 
-def process_image(img_b64, reply_token, child_info):
+def process_image(message_id, reply_token, child_info):
     try:
+        img_b64 = get_image(message_id)
         result = analyze(img_b64, child_info)
         msgs = []
         events = result if isinstance(result, list) else result.get('events', [])
         for ev in events:
-            msgs.append(f"{ev['title']}\n{ev.get('date','')}\n{gcal(ev)}")
+            msgs.append(f"{child_info['name']} - {ev['title']}\n{ev.get('date','')}\n{gcal(ev, child_info['name'])}")
         reply = '\n\n'.join(msgs) if msgs else '行事が見つかりませんでした'
     except Exception as e:
         reply = f'エラー: {str(e)}'
@@ -86,13 +86,9 @@ def webhook():
 
 @handler.add(MessageEvent, message=ImageMessageContent)
 def handle_image(event):
-    user_id = event.source.user_id
     message_id = event.message.id
     reply_token = event.reply_token
-    
-    img_b64 = get_image(message_id)
-    pending_images[user_id] = img_b64
-    
+
     with ApiClient(configuration) as api_client:
         MessagingApi(api_client).reply_message(ReplyMessageRequest(
             reply_token=reply_token,
@@ -101,36 +97,35 @@ def handle_image(event):
                 template=ButtonsTemplate(
                     text='どのお子さんのプリントですか？',
                     actions=[
-                        PostbackAction(label='隆蒼', data='child=ryuso'),
-                        PostbackAction(label='夕蒼', data='child=yuso'),
-                        PostbackAction(label='一華・百華', data='child=kazuka_momoka'),
-                        PostbackAction(label='颯華', data='child=soka'),
+                        PostbackAction(label='隆蒼', data=f'child=ryuso&mid={message_id}'),
+                        PostbackAction(label='夕蒼', data=f'child=yuso&mid={message_id}'),
+                        PostbackAction(label='一華・百華', data=f'child=kazuka_momoka&mid={message_id}'),
+                        PostbackAction(label='颯華', data=f'child=soka&mid={message_id}'),
                     ]
                 )
             )]))
 
 @handler.add(PostbackEvent)
 def handle_postback(event):
-    user_id = event.source.user_id
     data = event.postback.data
     reply_token = event.reply_token
     
-    if data.startswith('child='):
-        child_key = data.split('=')[1]
-        child_info = CHILDREN.get(child_key)
-        img_b64 = pending_images.pop(user_id, None)
-        
-        if not img_b64:
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).reply_message(ReplyMessageRequest(
-                    reply_token=reply_token,
-                    messages=[TextMessage(text='画像が見つかりません。もう一度画像を送ってください。')]))
-            return
-        
-        thread = threading.Thread(
-            target=process_image,
-            args=(img_b64, reply_token, child_info))
-        thread.start()
+    params = dict(item.split('=') for item in data.split('&'))
+    child_key = params.get('child')
+    message_id = params.get('mid')
+    child_info = CHILDREN.get(child_key)
+    
+    if not child_info or not message_id:
+        with ApiClient(configuration) as api_client:
+            MessagingApi(api_client).reply_message(ReplyMessageRequest(
+                reply_token=reply_token,
+                messages=[TextMessage(text='エラーが発生しました。もう一度画像を送ってください。')]))
+        return
+    
+    thread = threading.Thread(
+        target=process_image,
+        args=(message_id, reply_token, child_info))
+    thread.start()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
