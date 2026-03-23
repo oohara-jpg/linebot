@@ -57,6 +57,13 @@ def gcal(ev, child_name):
     title = f"{child_name} - {ev['title']}"
     return f"https://calendar.google.com/calendar/render?action=TEMPLATE&text={quote(title)}&dates={f(date)}/{f(end_date)}&details={quote(ev.get('details',''))}"
 
+def shorten_url(long_url):
+    try:
+        res = requests.get(f"https://tinyurl.com/api-create.php?url={long_url}", timeout=5)
+        return res.text
+    except:
+        return long_url
+
 def process_image(message_id, reply_token, child_info):
     try:
         img_b64 = get_image(message_id)
@@ -64,13 +71,13 @@ def process_image(message_id, reply_token, child_info):
         msgs = []
         events = result if isinstance(result, list) else result.get('events', [])
         for ev in events:
-           url = gcal(ev, child_info['name'])
-            short_url = requests.get(f"https://tinyurl.com/api-create.php?url={url}").text
+            long_url = gcal(ev, child_info['name'])
+            short_url = shorten_url(long_url)
             msgs.append(f"{child_info['name']} - {ev['title']}\n{ev.get('date','')}\n{short_url}")
         reply = '\n\n'.join(msgs) if msgs else '行事が見つかりませんでした'
     except Exception as e:
         reply = f'エラー: {str(e)}'
-    
+
     with ApiClient(configuration) as api_client:
         MessagingApi(api_client).reply_message(ReplyMessageRequest(
             reply_token=reply_token,
@@ -111,19 +118,19 @@ def handle_image(event):
 def handle_postback(event):
     data = event.postback.data
     reply_token = event.reply_token
-    
+
     params = dict(item.split('=') for item in data.split('&'))
     child_key = params.get('child')
     message_id = params.get('mid')
     child_info = CHILDREN.get(child_key)
-    
+
     if not child_info or not message_id:
         with ApiClient(configuration) as api_client:
             MessagingApi(api_client).reply_message(ReplyMessageRequest(
                 reply_token=reply_token,
                 messages=[TextMessage(text='エラーが発生しました。もう一度画像を送ってください。')]))
         return
-    
+
     thread = threading.Thread(
         target=process_image,
         args=(message_id, reply_token, child_info))
